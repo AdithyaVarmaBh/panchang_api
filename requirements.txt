@@ -2,5 +2,5 @@ pyswisseph
 fastapi
 uvicorn
 pytz
-
+astral
 swisseph
