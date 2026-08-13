@@ -3,8 +3,8 @@ from time import tzname
 import swisseph as swe
 from datetime import datetime
 import pytz
-from astral import LocationInfo
-from astral.sun import sun
+# from astral import LocationInfo
+# from astral.sun import sun
 
 swe.set_ephe_path('.')
 swe.set_sid_mode(swe.SIDM_LAHIRI,0,0)
@@ -22,6 +22,33 @@ def to_julian_day(dt: datetime) -> float:
         dt.hour + dt.minute / 60.0 + dt.second / 3600.0
     )
 
+def get_true_sunrise(date: datetime, lat: float, lon: float, tz: str) -> datetime:
+    tzinfo = pytz.timezone(tz)
+
+    jd = to_julian_day(date)
+
+    rs = swe.rise_trans(
+        jd,
+        swe.SUN,
+        lon,
+        lat,
+        rsmi=swe.CALC_RISE | swe.BIT_DISC_CENTER
+    )
+
+    sunrise_jd = rs[1]
+
+    sunrise_utc = swe.revjul(sunrise_jd, swe.SE_GREG_CAL)
+    sunrise_dt = datetime(
+        sunrise_utc[0],
+        sunrise_utc[1],
+        sunrise_utc[2],
+        int(sunrise_utc[3]),
+        int((sunrise_utc[3] % 1) * 60),
+        int((((sunrise_utc[3] % 1) * 60) % 1) * 60),
+        tzinfo=pytz.utc
+    )
+
+    return sunrise_dt.astimezone(tzinfo)
 
 def get_sun_longitude(jd: float) -> float:
     flags = swe.FLG_SWIEPH | swe.FLG_SIDEREAL
@@ -36,22 +63,22 @@ def get_moon_longitude(jd: float) -> float:
     lon = result[0][0]
     return normalize_angle(lon)
 
-def get_sunrise(date: datetime, lat: float, lon: float, tz: str) -> datetime:
-	"""
-	Sunrise using Astral (robust on macOS)
-	"""
-	tzinfo = pytz.timezone(tz)
-
-	loc = LocationInfo(
-		name = "Custom",
-		region = "Custom",
-		timezone = tz,
-		latitude = lat,
-		longitude = lon
-	)
-
-	s=sun(loc.observer, date=date, tzinfo=tzinfo)
-	return s["sunrise"]
+# def get_sunrise(date: datetime, lat: float, lon: float, tz: str) -> datetime:
+# 	"""
+# 	Sunrise using Astral (robust on macOS)
+# 	"""
+# 	tzinfo = pytz.timezone(tz)
+#
+# 	loc = LocationInfo(
+# 		name = "Custom",
+# 		region = "Custom",
+# 		timezone = tz,
+# 		latitude = lat,
+# 		longitude = lon
+# 	)
+#
+# 	s=sun(loc.observer, date=date, tzinfo=tzinfo)
+# 	return s["sunrise"]
 
 def get_tithi(jd: float) -> dict:
     sun_lon = get_sun_longitude(jd)
@@ -101,7 +128,8 @@ def get_nakshatra(jd: float) -> dict:
     }
 
 def get_panchang_at_sunrise(date: datetime, lat: float, lon: float, tz: str) -> dict:
-	sunrise = get_sunrise(date, lat, lon, tz)
+	sunrise = get_true_sunrise(date, lat, lon, tz)
+
 	jd_sunrise = to_julian_day(sunrise)
 
 	tithi = get_tithi(jd_sunrise)
@@ -112,3 +140,14 @@ def get_panchang_at_sunrise(date: datetime, lat: float, lon: float, tz: str) -> 
 		"tithi": tithi,
 		"nakshatra": nakshatra
 	}
+
+def get_panchang_at_time(dt: datetime) -> dict:
+    jd = to_julian_day(dt)
+    tithi = get_tithi(jd)
+    nakshatra = get_nakshatra(jd)
+
+    return {
+        "datetime": dt.isoformat(),
+        "tithi": tithi,
+        "nakshatra": nakshatra
+    }
